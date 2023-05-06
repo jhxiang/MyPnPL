@@ -409,6 +409,7 @@ namespace g2o {
     }
 } //namespace g2o
 
+// 这里需要根据自己的坐标系定义修改
 vector<float> R2angle(cv::Mat_<float> R)
     {
         vector<float> angle;
