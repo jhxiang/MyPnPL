@@ -5,7 +5,21 @@
 #include <g2o/core/base_edge.h>
 #include <g2o/core/optimizable_graph.h>
 #include <g2o/core/batch_stats.h>
+#include <Eigen/Dense>
+#include <vector>
+#include <g2o/core/sparse_optimizer.h>
+#include <g2o/core/block_solver.h>
+#include <g2o/core/solver.h>
+#include <g2o/core/robust_kernel_impl.h>
+#include <g2o/core/optimization_algorithm_levenberg.h>
+#include <g2o/types/sba/types_six_dof_expmap.h>
+#include <g2o/solvers/csparse/linear_solver_csparse.h>
+#include <g2o/solvers/dense/linear_solver_dense.h>
+#include <g2o/solvers/cholmod/linear_solver_cholmod.h>
+#include <g2o/solvers/eigen/linear_solver_eigen.h>
+#include <g2o/types/sba/g2o_types_sba_api.h>
 
+#define PI 3.1415926536
 
 // flags: 1:only lines 2:only points 3:points and lines
 void MonoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> &lns2d,
