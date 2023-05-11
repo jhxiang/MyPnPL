@@ -1,4 +1,20 @@
+#include <Eigen/Dense>
+#include <vector>
+#include <g2o/core/sparse_optimizer.h>
+#include <g2o/core/block_solver.h>
+#include <g2o/core/solver.h>
+#include <g2o/core/robust_kernel_impl.h>
+#include <g2o/core/optimization_algorithm_levenberg.h>
+#include <g2o/types/sba/types_six_dof_expmap.h>
+#include <g2o/solvers/csparse/linear_solver_csparse.h>
+#include <g2o/solvers/dense/linear_solver_dense.h>
+#include <g2o/solvers/cholmod/linear_solver_cholmod.h>
+#include <g2o/solvers/eigen/linear_solver_eigen.h>
+#include <g2o/types/sba/g2o_types_sba_api.h>
+
 #include "pnpl.h"
+
+#define PI 3.1415926536
 
 using namespace Eigen;
 using namespace std;
@@ -22,7 +38,8 @@ Vector2d mycam_map(const Vector3d &trans_xyz, const Vector2d &principle_point, c
 
 namespace g2o {
     typedef Eigen::Matrix<double, 8, 1, Eigen::ColMajor> Vector8d;
-    typedef Eigen::Matrix<double, 6, 1, Eigen::ColMajor>   Vector6D;
+    typedef Eigen::Matrix<double, 4, 1, Eigen::ColMajor> Vector4d;
+    typedef Eigen::Matrix<double, 6, 1, Eigen::ColMajor>  Vector6D;
     class VertexSBALine : public BaseVertex<6, Vector6D>
     {
     public:
@@ -191,8 +208,8 @@ namespace g2o {
             dx2 /= n2;
             dy2 /= n2;
             double d2 = -dy2 * obs[4] + dx2 * obs[5];
-            double dist3 = -dy2 * u3[4] + dx2 * u3[5] - d2;
-            double dist4 = -dy2 * u4[4] + dx2 * u4[5] - d2;
+            double dist3 = -dy2 * u3[0] + dx2 * u3[1] - d2;
+            double dist4 = -dy2 * u4[0] + dx2 * u4[1] - d2;
             _error = Vector8d(dist1, dist2, 0, 0, dist3, dist4, 0, 0);
         }
 
@@ -260,11 +277,11 @@ namespace g2o {
     }
     
     // ---------------------------------------一元边，双目优化位姿(点)-----------------------------------------
-    class EdgeSteoSE3ProjectXYZOnlyPose: public BaseUnaryEdge<4, Vector4, VertexSE3Expmap>
+    class EdgeSteoSE3ProjectXYZOnlyPose: public BaseUnaryEdge<4, Vector4d, VertexSE3Expmap>
     {
     public:
-        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+        EdgeSteoSE3ProjectXYZOnlyPose(){}
         bool read(std::istream &is);
         bool write(std::ostream &os) const;
         void computeError();
@@ -301,7 +318,7 @@ namespace g2o {
     }
 
     Vector2d EdgeSteoSE3ProjectXYZOnlyPose::cam_project_r(const Vector3d &trans_xyz) const
-    {   
+    {
         Vector3d trans_xyz_r = R_L2R * trans_xyz + T_L2R;
         Vector2d proj = project(trans_xyz_r);
         Vector2d res;
@@ -312,12 +329,11 @@ namespace g2o {
 
     void EdgeSteoSE3ProjectXYZOnlyPose::computeError()
     {
-        const VertexSE3Expmap *v1 =
-            static_cast<const VertexSE3Expmap *>(_vertices[0]);
+        const VertexSE3Expmap *v1 = static_cast<const VertexSE3Expmap *>(_vertices[0]);
         Vector4d obs(_measurement);
         Vector2d error1 = cam_project_l(v1->estimate().map(Xw));
         Vector2d error2 = cam_project_r(v1->estimate().map(Xw));
-        _error = obs - Vector4(error1[0], error1[1], error2[0], error2[1]);
+        _error = obs - Vector4d(error1[0], error1[1], error2[0], error2[1]);
     }
 
 
@@ -393,11 +409,10 @@ namespace g2o {
     }
 } //namespace g2o
 
-// 这里需要根据自己的坐标系定义修改
-vector<float> R2angle(cv::Mat_<float> R)
+vector<double> R2angle(cv::Mat_<double> R)
     {
-        vector<float> angle;
-        float angle1, angle2, angle3;
+        vector<double> angle;
+        double angle1, angle2, angle3;
 
         // 1:俯仰 2:方位 3:滚转
         angle3 = atan(-R(1, 0) / R(1, 1));
@@ -412,7 +427,7 @@ vector<float> R2angle(cv::Mat_<float> R)
    
 void MonoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> &lns2d,
             const std::vector<cv::Point3f> &pts3d, const std::vector<cv::Point2f> &pts2d,
-            const cv::Mat &K, cv::Mat &R, std::vector<float> &oula, cv::Mat &t, 
+            const cv::Mat &K, cv::Mat &R, std::vector<double> &oula, cv::Mat &t, 
             Eigen::Vector3d trans, Eigen::Quaterniond q, int flags)
 {
     int nlns = lns3d.size();
@@ -444,7 +459,7 @@ void MonoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
     
     switch(flags){
         case 1:
-            cout << "optimization by lines only" << endl;
+            cout << "mono: optimization by lines only" << endl;
             // add vertex for lines and edges for projection
             for (int i = 0; i < nlns; i++)
             {
@@ -468,7 +483,7 @@ void MonoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
             break;
 
         case 2:
-            cout << "optimization by points only" << endl;
+            cout << "mono: optimization by points only" << endl;
             // add add vertex for points and edges for projection
             for (int i = 0; i < npts; i++)
             {
@@ -494,7 +509,7 @@ void MonoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
             break;
 
         case 3:
-            cout << "optimization by lines and points" << endl;
+            cout << "mono: optimization by lines and points" << endl;
             // add add vertex for points and edges for projection
             for (int i = 0; i < npts; i++)
             {
@@ -549,7 +564,7 @@ void MonoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
     optimizer.optimize(20);
     // output result
     Eigen::MatrixXd T = Eigen::Isometry3d(v_se3->estimate()).matrix();
-    R = (cv::Mat_<float>(3, 3) << T(0, 0), T(0, 1), T(0, 2),
+    R = (cv::Mat_<double>(3, 3) << T(0, 0), T(0, 1), T(0, 2),
                                   T(1, 0), T(1, 1), T(1, 2),
                                   T(2, 0), T(2, 1), T(2, 2));
     oula = R2angle(R);
@@ -560,7 +575,7 @@ void MonoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
 void BinoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> &l_lns2d, const std::vector<cv::Vec4f> &r_lns2d,
               const std::vector<cv::Point3f> &pts3d, const std::vector<cv::Point2f> &l_pts2d, const std::vector<cv::Point2f> &r_pts2d,
               const cv::Mat &K_l, const cv::Mat &K_r, const Eigen::Matrix3d R_L2R, const Eigen::Matrix<double, 3, 1> T_L2R, cv::Mat &R, 
-              std::vector<float> &oula, cv::Mat &t, Eigen::Vector3d trans, Eigen::Quaterniond q, int flags)
+              std::vector<double> &oula, cv::Mat &t, Eigen::Vector3d trans, Eigen::Quaterniond q, int flags)
 {
     int nlns = lns3d.size();
     int npts = pts3d.size();
@@ -593,7 +608,7 @@ void BinoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
     switch (flags)
     {
     case 1:
-            cout << "optimization by lines only" << endl;
+            cout << "bino: optimization by lines only" << endl;
             // add vertex for lines and edges for projection
             for (int i = 0; i < nlns; i++)
             {
@@ -622,7 +637,7 @@ void BinoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
             break;
 
     case 2:
-            cout << "optimization by points only" << endl;
+            cout << "bino: optimization by points only" << endl;
             // add add vertex for points and edges for projection
             for (int i = 0; i < npts; i++)
             {
@@ -645,15 +660,18 @@ void BinoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
                 e->fy_r = _K_r.at<double>(1, 1);
                 e->cx_r = _K_r.at<double>(0, 2);
                 e->cy_r = _K_r.at<double>(1, 2);
+                e->R_L2R = R_L2R;
+                e->T_L2R = T_L2R;
                 e->Xw[0] = pt.x;
                 e->Xw[1] = pt.y;
                 e->Xw[2] = pt.z;
+
                 optimizer.addEdge(e);
             }
             break;
 
     case 3:
-            cout << "optimization by lines and points" << endl;
+            cout << "bino: optimization by lines and points" << endl;
             // add add vertex for points and edges for projection
             for (int i = 0; i < npts; i++)
             {
@@ -676,6 +694,8 @@ void BinoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
                 e->fy_r = _K_r.at<double>(1, 1);
                 e->cx_r = _K_r.at<double>(0, 2);
                 e->cy_r = _K_r.at<double>(1, 2);
+                e->R_L2R = R_L2R;
+                e->T_L2R = T_L2R;
                 e->Xw[0] = pt.x;
                 e->Xw[1] = pt.y;
                 e->Xw[2] = pt.z;
@@ -718,7 +738,7 @@ void BinoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
     optimizer.optimize(20);
     // output result(左目相机下的位姿)
     Eigen::MatrixXd T = Eigen::Isometry3d(v_se3->estimate()).matrix();
-    R = (cv::Mat_<float>(3, 3) << T(0, 0), T(0, 1), T(0, 2),
+    R = (cv::Mat_<double>(3, 3) << T(0, 0), T(0, 1), T(0, 2),
                                   T(1, 0), T(1, 1), T(1, 2),
                                   T(2, 0), T(2, 1), T(2, 2));
     oula = R2angle(R);
