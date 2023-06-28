@@ -19,18 +19,18 @@
 using namespace Eigen;
 using namespace std;
 
-Vector2d project(const Vector3d &v)
+g2o::Vector2 project(const g2o::Vector3 &v)
 {
-    Vector2d res;
+    g2o::Vector2 res;
     res(0) = v(0) / v(2);
     res(1) = v(1) / v(2);
     return res;
 }
 
-Vector2d mycam_map(const Vector3d &trans_xyz, const Vector2d &principle_point, const Vector2d &focal_length)
+g2o::Vector2 mycam_map(const g2o::Vector3 &trans_xyz, const g2o::Vector2 &principle_point, const g2o::Vector2 &focal_length)
 {
-    Vector2d proj = project(trans_xyz);
-    Vector2d res;
+    g2o::Vector2 proj = project(trans_xyz);
+    g2o::Vector2 res;
     res[0] = proj[0] * focal_length[0] + principle_point[0];
     res[1] = proj[1] * focal_length[1] + principle_point[1];
     return res;
@@ -415,9 +415,9 @@ vector<double> R2angle(cv::Mat_<double> R)
         double angle1, angle2, angle3;
 
         // 1:俯仰 2:方位 3:滚转
-        angle3 = atan(-R(1, 0) / R(1, 1));
-        angle1 = asin(R(1, 2));
-        angle2 = asin(-R(0, 2) / cos(angle1));
+        angle3 = atan(R(0, 1) / R(1, 1));
+        angle1 = asin(-R(2, 1));
+        angle2 = asin(-R(2, 0) / cos(angle1));
         angle.push_back(angle1 * 180 / PI);
         angle.push_back(angle2 * 180 / PI);
         angle.push_back(angle3 * 180 / PI);
@@ -565,11 +565,11 @@ void MonoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
     // output result
     Eigen::MatrixXd T = Eigen::Isometry3d(v_se3->estimate()).matrix();
     R = (cv::Mat_<double>(3, 3) << T(0, 0), T(0, 1), T(0, 2),
-                                  T(1, 0), T(1, 1), T(1, 2),
-                                  T(2, 0), T(2, 1), T(2, 2));
+                                   T(1, 0), T(1, 1), T(1, 2),
+                                   T(2, 0), T(2, 1), T(2, 2));           
     oula = R2angle(R);
-    // 左手坐标系定义 旋转顺序：y-x-z
-    t = (cv::Mat_<float>(3, 1) << T(0, 3), T(1, 3), T(2, 3));
+    t = (cv::Mat_<double>(3, 1) << T(0, 3), T(1, 3), T(2, 3));
+    t = R.t() * t;
 }
 
 void BinoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> &l_lns2d, const std::vector<cv::Vec4f> &r_lns2d,
@@ -743,5 +743,6 @@ void BinoPnPL(const std::vector<cv::Vec6f> &lns3d, const std::vector<cv::Vec4f> 
                                   T(2, 0), T(2, 1), T(2, 2));
     oula = R2angle(R);
     // 左手坐标系定义 旋转顺序：y-x-z
-    t = (cv::Mat_<float>(3, 1) << T(0, 3), T(1, 3), T(2, 3));
+    t = (cv::Mat_<double>(3, 1) << T(0, 3), T(1, 3), T(2, 3));
+    t = R.t() * t;
 }
